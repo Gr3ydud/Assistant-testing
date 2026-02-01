@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 import textwrap
 import requests
-from rich.console import Console
-
-console = Console()
 
 MAX_SNIPPET_LINES = 20
 HEADERS = {"User-Agent": "Pi-Terminal-Assistant"}
@@ -28,7 +25,7 @@ def get_text(url):
     r = requests.get(url, headers=HEADERS)
     return r.text if r.status_code == 200 else None
 
-# Wikipedia summary works for anything
+# Wikipedia summary works for any topic
 def wiki_summary(query):
     url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + query.replace(" ", "_")
     data = get_json(url)
@@ -89,7 +86,7 @@ def process_prompt(prompt):
         else:
             print("No clearly helpful sections found.")
     else:
-        print("No Wikipedia data found. You could try a more specific query.")
+        print("No Wikipedia data found. Try a more specific query.")
 
     divider("REAL CODE (GITHUB - optional)")
     results = github_search(prompt)
