@@ -3,7 +3,7 @@ import sys
 from assistant_core_download import process_prompt
 
 def main():
-    print("Terminal Code Assistant")
+    print("Gr3y's gr3at assistant")
     print("Type 'exit' to quit.\n")
     while True:
         try:
