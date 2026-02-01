@@ -2,8 +2,8 @@
 import textwrap
 import requests
 
-MAX_SNIPPET_LINES = 20
-HEADERS = {"User-Agent": "Pi-Terminal-Assistant"}
+HEADERS = {"User-Agent": "Terminal-Code-Assistant"}
+WIKI_BASE = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 
 def print_panel(title):
     line = "=" * (len(title) + 8)
@@ -18,20 +18,44 @@ def wrap(text, width=80):
     return "\n".join(textwrap.wrap(text, width))
 
 def get_json(url):
-    r = requests.get(url, headers=HEADERS)
-    return r.json() if r.status_code == 200 else None
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=5)
+        return r.json() if r.status_code == 200 else None
+    except requests.RequestException:
+        return None
 
-def get_text(url):
-    r = requests.get(url, headers=HEADERS)
-    return r.text if r.status_code == 200 else None
-
-# Wikipedia summary works for any topic
+# --- Wikipedia ---
 def wiki_summary(query):
-    url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + query.replace(" ", "_")
+    url = WIKI_BASE + query.replace(" ", "_")
     data = get_json(url)
     return data.get("extract") if data else None
 
-# Score paragraphs based on query relevance
+# --- DuckDuckGo fallback ---
+def duckduckgo_search(query):
+    """
+    Uses DuckDuckGo Instant Answer API for general search.
+    Returns a short snippet or None if nothing is found.
+    """
+    url = f"https://api.duckduckgo.com/?q={query}&format=json&no_html=1&skip_disambig=1"
+    data = get_json(url)
+    if not data:
+        return None
+
+    # Try to get a meaningful answer
+    answer = data.get("AbstractText") or data.get("Answer")
+    if answer:
+        return answer.strip()
+    
+    # If AbstractText empty, try RelatedTopics
+    topics = data.get("RelatedTopics", [])
+    snippets = []
+    for t in topics[:3]:
+        text = t.get("Text")
+        if text:
+            snippets.append(text.strip())
+    return "\n".join(snippets) if snippets else None
+
+# --- Paragraph scoring ---
 def score_paragraph(text, prompt):
     score = 0
     for term in prompt.lower().split():
@@ -51,29 +75,7 @@ def extract_help(text, prompt, limit=3):
     scored.sort(reverse=True)
     return [p for _, p in scored[:limit]]
 
-# GitHub search for code (optional)
-def github_search(query, results=3):
-    url = f"https://api.github.com/search/code?q={query}"
-    data = get_json(url)
-    return (data or {}).get("items", [])[:results]
-
-def fetch_raw(item):
-    raw_url = (
-        item["html_url"]
-        .replace("github.com", "raw.githubusercontent.com")
-        .replace("/blob/", "/")
-    )
-    return get_text(raw_url)
-
-def extract_snippet(code):
-    lines = []
-    for line in code.splitlines():
-        if line.strip() and not line.strip().startswith("#"):
-            lines.append(line)
-        if len(lines) >= MAX_SNIPPET_LINES:
-            break
-    return "\n".join(lines)
-
+# --- Main prompt processor ---
 def process_prompt(prompt):
     divider("HELPFUL CONTEXT (WIKIPEDIA)")
     wiki = wiki_summary(prompt)
@@ -84,18 +86,16 @@ def process_prompt(prompt):
                 print(wrap(s))
                 print()
         else:
-            print("No clearly helpful sections found.")
+            # If no helpful paragraphs, print whole summary
+            print(wrap(wiki))
+            print()
     else:
-        print("No Wikipedia data found. Try a more specific query.")
+        print("No Wikipedia data found.")
 
-    divider("REAL CODE (GITHUB - optional)")
-    results = github_search(prompt)
-    if not results:
-        print("No GitHub code found.")
-        return
-
-    for item in results:
-        print(f"\n{item['repository']['full_name']}")
-        raw = fetch_raw(item)
-        snippet = extract_snippet(raw) if raw else None
-        print("\n" + (snippet or "No usable code found") + "\n")
+    divider("DUCKDUCKGO RESULTS")
+    ddg = duckduckgo_search(prompt)
+    if ddg:
+        print(wrap(ddg))
+        print()
+    else:
+        print("No DuckDuckGo results found.")
